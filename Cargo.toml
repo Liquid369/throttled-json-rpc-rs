@@ -1,5 +1,5 @@
 [package]
-name = "throttled-json-rpc"
+name = "pivx-throttled-jsonrpc"
 version = "0.1.0"
 authors = [
     "Aiden McClelland <aiden.k.mcclelland@gmail.com>",
@@ -10,7 +10,7 @@ repository = "https://github.com/DR-BoneZ/throttled-json-rpc-rs"
 homepage = "https://github.com/DR-BoneZ/throttled-json-rpc-rs"
 license = "MIT"
 readme = "README.md"
-documentation = "https://docs.rs/throttled-json-rpc"
+documentation = "https://docs.rs/pivx-throttled-jsonrpc"
 description = "Macro-based throttled JSON-RPC client with rate limiting and batching support"
 keywords = ["json-rpc", "rpc", "client", "throttle", "rate-limit"]
 categories = ["network-programming", "api-bindings", "asynchronous"]
