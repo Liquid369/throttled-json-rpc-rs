@@ -1,17 +1,31 @@
 [package]
 name = "throttled_json_rpc"
-version = "0.0.6"
-authors = ["Aiden McClelland <aiden.k.mcclelland@gmail.com>"]
+version = "0.1.0"
+authors = [
+    "Aiden McClelland <aiden.k.mcclelland@gmail.com>",
+    "PIVX Labs",
+    "Liquid369"
+]
 repository = "https://github.com/DR-BoneZ/throttled-json-rpc-rs"
 homepage = "https://github.com/DR-BoneZ/throttled-json-rpc-rs"
 license = "MIT"
 readme = "README.md"
-documentation = "http://docs.rs/throttled_json_rpc/"
-description = "Throttled JSON RPC API client for Rust."
-edition = "2018"
+documentation = "https://docs.rs/throttled_json_rpc"
+description = "Macro-based throttled JSON-RPC client with rate limiting and batching support"
+keywords = ["json-rpc", "rpc", "client", "throttle", "rate-limit"]
+categories = ["network-programming", "api-bindings", "asynchronous"]
+edition = "2021"
+rust-version = "1.70"
+
+[dependencies]
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
 
 [dev-dependencies]
-failure = "0.1.5"
-reqwest = "0.9.18"
-serde = { version = "1.0.92", features = ["derive"] }
-serde_json = "1.0.39"
+anyhow = "1.0"
+reqwest = { version = "0.12", features = ["blocking", "json"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["rt", "time", "test-util"] }
