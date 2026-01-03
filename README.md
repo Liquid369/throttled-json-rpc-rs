@@ -1,7 +1,7 @@
-# throttled_json_rpc
+# throttled-json-rpc
 
-[![Crates.io](https://img.shields.io/crates/v/throttled_json_rpc.svg)](https://crates.io/crates/throttled_json_rpc)
-[![Documentation](https://docs.rs/throttled_json_rpc/badge.svg)](https://docs.rs/throttled_json_rpc)
+[![Crates.io](https://img.shields.io/crates/v/throttled-json-rpc.svg)](https://crates.io/crates/throttled-json-rpc)
+[![Documentation](https://docs.rs/throttled-json-rpc/badge.svg)](https://docs.rs/throttled-json-rpc)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A macro-based JSON-RPC client generator with built-in rate limiting, concurrency control, and request batching.
@@ -20,7 +20,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-throttled_json_rpc = "0.1"
+throttled-json-rpc = "0.1"
 ```
 
 ## Quick Start
