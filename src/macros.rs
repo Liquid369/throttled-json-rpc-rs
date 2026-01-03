@@ -17,7 +17,7 @@ macro_rules! jsonrpc_client {
             )+
         }
     ) => {
-        use failure::Error;
+        use $crate::RpcError;
         use reqwest as rq;
         use serde::Deserialize;
         use serde::Serialize;
@@ -28,6 +28,7 @@ macro_rules! jsonrpc_client {
             There are times that we want to clean the trailing nulls, because then it works better for some implementations
             of Nodes where it figures out the optionals by the count of the params via the json-rpc.
         */
+        #[allow(dead_code)]
         fn params_cleanse(value: serde_json::Value) -> serde_json::Value {
             use serde_json::Value::{Array, Null};
             match value {
@@ -35,10 +36,7 @@ macro_rules! jsonrpc_client {
                     values
                         .into_iter()
                         .rev()
-                        .skip_while(|some_value| match some_value {
-                            Null => true,
-                            _ => false,
-                        })
+                        .skip_while(|some_value| matches!(some_value, Null))
                         .collect::<Vec<serde_json::Value>>()
                         .into_iter()
                         .rev()
@@ -49,6 +47,7 @@ macro_rules! jsonrpc_client {
         }
 
         #[derive(Deserialize)]
+        #[allow(dead_code)]
         struct RpcResponse<T> {
             pub result: Option<T>,
             pub error: Option<serde_json::Value>,
@@ -56,6 +55,7 @@ macro_rules! jsonrpc_client {
         }
 
         #[derive(Serialize)]
+        #[allow(dead_code)]
         struct RpcRequestSer<'a, T> {
             pub method: &'static str,
             pub params: &'a T,
@@ -63,21 +63,26 @@ macro_rules! jsonrpc_client {
         }
 
         #[derive(Serialize)]
+        #[allow(dead_code)]
         struct RpcRequest<T> {
             pub method: &'static str,
             pub params: T,
         }
 
+        #[allow(dead_code)]
         impl<T> RpcRequest<T>
         where T: Serialize {
             pub fn polymorphize(self) -> RpcRequest<serde_json::Value> {
                 RpcRequest {
                     method: self.method,
-                    params: params_cleanse(serde_json::to_value(&self.params).unwrap()),
+                    params: params_cleanse(
+                        serde_json::to_value(&self.params)
+                            .expect("failed to serialize RPC params")
+                    ),
                 }
             }
 
-            pub fn as_ser(&self, id: usize) -> RpcRequestSer<T> {
+            pub fn as_ser(&self, id: usize) -> RpcRequestSer<'_, T> {
                 RpcRequestSer {
                     method: self.method,
                     params: &self.params,
@@ -87,25 +92,29 @@ macro_rules! jsonrpc_client {
         }
 
         pub mod reply {
-            use failure::Error;
             use super::*;
             $(
                 $(
                     $(#[$attr_b])*
                     #[derive(Debug)]
                     #[allow(non_camel_case_types)]
+                    #[allow(dead_code)]
                     pub enum $method_b {
                         $($title($return_ty_b),)+
                     }
 
                     $(#[$attr_b])*
+                    #[allow(dead_code)]
                     impl $method_b {
                         $(
                             #[allow(non_snake_case)]
-                            pub fn $title(self) -> Result<$return_ty_b, Error> {
+                            pub fn $title(self) -> Result<$return_ty_b, RpcError> {
                                 match self {
                                     $method_b::$title(a) => Ok(a),
-                                    a => failure::bail!("Wrong variant of {}: expected {}(_), got {:?}", stringify!(reply::$method_b), stringify!(reply::$method_b::$return_ty_b), a)
+                                    _ => Err(RpcError::WrongVariant {
+                                        enum_name: stringify!($method_b),
+                                        expected: stringify!($title),
+                                    })
                                 }
                             }
                         )+
@@ -114,6 +123,7 @@ macro_rules! jsonrpc_client {
             )+
         }
 
+        #[allow(dead_code)]
         pub struct ReqBatcher<T, U: for<'de> Deserialize<'de>> {
             reqs: Vec<RpcRequest<serde_json::Value>>,
             resps: Vec<Option<U>>,
@@ -121,12 +131,14 @@ macro_rules! jsonrpc_client {
             phantom: PhantomData<T>,
         }
 
+        #[allow(dead_code)]
         pub struct BatcherPair<'a, T: for<'de> Deserialize<'de>>(&'a $struct_name, ReqBatcher<$struct_name, T>);
+        #[allow(dead_code)]
         impl<'a, T> BatcherPair<'a, T>
         where
             T: for<'de> Deserialize<'de>
         {
-            fn add_req<U: Serialize>(&mut self, method: &'static str, params: U) -> Result<usize, Error> {
+            fn add_req<U: Serialize>(&mut self, method: &'static str, params: U) -> Result<usize, RpcError> {
                 let body = RpcRequest {
                     method,
                     params,
@@ -140,20 +152,21 @@ macro_rules! jsonrpc_client {
             }
         }
 
+        #[allow(dead_code)]
         pub trait BatchRequest<$struct_name, T: for<'de> Deserialize<'de>> {
             fn inner(&mut self) -> &mut ReqBatcher<$struct_name, T>;
             $(
                 $(
                     $(#[$attr_a])*
-                    fn $method_a(&mut self$(, $arg_name_a: $arg_ty_a)*) -> Result<usize, Error>;
+                    fn $method_a(&mut self$(, $arg_name_a: $arg_ty_a)*) -> Result<usize, RpcError>;
                 )*
                 $(
                     $(#[$attr_b])*
-                    fn $method_b(&mut self$(, $arg_name_b: $arg_ty_b)*) -> Result<usize, Error>;
+                    fn $method_b(&mut self$(, $arg_name_b: $arg_ty_b)*) -> Result<usize, RpcError>;
                 )*
             )*
-            fn flush(&mut self) -> Result<(), Error>;
-            fn send(&mut self) -> Result<Vec<T>, Error>;
+            fn flush(&mut self) -> Result<(), RpcError>;
+            fn send(&mut self) -> Result<Vec<T>, RpcError>;
         }
 
         impl<'a, T> BatchRequest<$struct_name, T> for BatcherPair<'a, T>
@@ -165,34 +178,36 @@ macro_rules! jsonrpc_client {
             $(
                 $(
                     $(#[$attr_a])*
-                    fn $method_a(&mut self$(, $arg_name_a: $arg_ty_a)*) -> Result<usize, Error> {
+                    fn $method_a(&mut self$(, $arg_name_a: $arg_ty_a)*) -> Result<usize, RpcError> {
                         self.add_req(stringify!($method_a), ($($arg_name_a,)*))
                     }
                 )*
                 $(
                     $(#[$attr_b])*
-                    fn $method_b(&mut self$(, $arg_name_b: $arg_ty_b)*) -> Result<usize, Error> {
+                    fn $method_b(&mut self$(, $arg_name_b: $arg_ty_b)*) -> Result<usize, RpcError> {
                         self.add_req(stringify!($method_b), ($($arg_name_b,)*))
                     }
                 )*
             )*
 
-            fn flush(&mut self) -> Result<(), Error> {
-                if self.inner().reqs.len() == 0 {
+            fn flush(&mut self) -> Result<(), RpcError> {
+                if self.inner().reqs.is_empty() {
                     return Ok(())
                 }
-                let mut res = self.0.dispatch(&self.inner().reqs.iter().enumerate().map(|(idx, a)| a.as_ser(idx)).collect::<Vec<_>>())?;
-                let text = res.text()?;
-                let json = match serde_json::from_str::<Vec<RpcResponse<T>>>(&text) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        failure::bail!("{}:\n{}", e, &text)
-                    }
-                };
-                let res_res: Result<Vec<(usize, T)>, Error> = json.into_iter().map(|reply| {
+                let res = self.0.dispatch(&self.inner().reqs.iter().enumerate().map(|(idx, a)| a.as_ser(idx)).collect::<Vec<_>>())?;
+                let text = res.text().map_err(RpcError::HttpError)?;
+                let json = serde_json::from_str::<Vec<RpcResponse<T>>>(&text)
+                    .map_err(|e| RpcError::JsonError { source: e, body: text.clone() })?;
+
+                let res_res: Result<Vec<(usize, T)>, RpcError> = json.into_iter().map(|reply| {
                     Ok(match reply.result {
-                        Some(b) => (reply.id.ok_or(failure::format_err!("missing id in response"))?, b),
-                        _ => failure::bail!("{:?}", reply.error),
+                        Some(b) => (
+                            reply.id.ok_or(RpcError::MissingId)?,
+                            b
+                        ),
+                        None => return Err(RpcError::RpcError {
+                            error: reply.error.unwrap_or(serde_json::Value::Null)
+                        }),
                     })
                 }).collect();
                 let res = res_res?;
@@ -206,17 +221,18 @@ macro_rules! jsonrpc_client {
                 Ok(())
             }
 
-            fn send(&mut self) -> Result<Vec<T>, Error> {
+            fn send(&mut self) -> Result<Vec<T>, RpcError> {
                 self.flush()?;
-                let res = std::mem::replace(&mut self.inner().resps, Vec::new());
+                let res = std::mem::take(&mut self.inner().resps);
                 let res = res.into_iter()
-                    .map(|r| r.ok_or(failure::format_err!("missing response")))
-                    .collect::<Result<Vec<T>, Error>>()?;
+                    .map(|r| r.ok_or(RpcError::MissingResponse))
+                    .collect::<Result<Vec<T>, RpcError>>()?;
                 Ok(res)
             }
         }
 
         $(#[$struct_attr])*
+        #[allow(dead_code)]
         pub struct $struct_name {
             uri: String,
             user: Option<String>,
@@ -226,9 +242,24 @@ macro_rules! jsonrpc_client {
             counter: (Mutex<usize>, Condvar),
             last_req: Mutex<std::time::Instant>,
             max_batch_size: usize,
-            client: rq::Client,
+            client: rq::blocking::Client,
         }
 
+        /// RAII guard that releases a concurrency slot on drop
+        struct ConcurrencyGuard<'a> {
+            counter: &'a (Mutex<usize>, Condvar),
+        }
+
+        impl<'a> Drop for ConcurrencyGuard<'a> {
+            fn drop(&mut self) {
+                let mut lock = self.counter.0.lock().unwrap();
+                *lock -= 1;
+                drop(lock);
+                self.counter.1.notify_one();
+            }
+        }
+
+        #[allow(dead_code)]
         impl $struct_name {
             pub fn new(uri: String, user: Option<String>, pass: Option<String>, max_concurrency: usize, rps: usize, max_batch_size: usize) -> Arc<Self> {
                 Arc::new($struct_name {
@@ -240,7 +271,7 @@ macro_rules! jsonrpc_client {
                     counter: (Mutex::new(0), Condvar::new()),
                     last_req: Mutex::new(std::time::Instant::now()),
                     max_batch_size,
-                    client: rq::Client::new(),
+                    client: rq::blocking::Client::new(),
                 })
             }
 
@@ -253,24 +284,26 @@ macro_rules! jsonrpc_client {
                 })
             }
 
-            fn call_method<T: Serialize>(&self, method: &'static str, params: T) -> Result<String, Error> {
-                let mut res = self.dispatch(&RpcRequest {
+            fn call_method<T: Serialize>(&self, method: &'static str, params: T) -> Result<String, RpcError> {
+                let res = self.dispatch(&RpcRequest {
                     method,
                     params,
                 }.polymorphize())?;
-                let txt = res.text()?;
+                let txt = res.text().map_err(RpcError::HttpError)?;
                 Ok(txt)
             }
 
-            fn dispatch<T: Serialize>(&self, data: &T) -> Result<rq::Response, Error> {
+            fn dispatch<T: Serialize>(&self, data: &T) -> Result<rq::blocking::Response, RpcError> {
                 let mut builder = self.client
                     .post(&self.uri);
                 match (&self.user, &self.pass) {
-                    (Some(ref u), Some(ref p)) => builder = builder.basic_auth(u, Some(p)),
-                    (Some(ref u), None) => builder = builder.basic_auth::<&str, &str>(u, None),
+                    (Some(u), Some(p)) => builder = builder.basic_auth(u, Some(p)),
+                    (Some(u), None) => builder = builder.basic_auth::<&str, &str>(u, None),
                     _ => (),
                 };
                 builder = builder.json(data);
+
+                // Rate limiting: ensure minimum time between requests
                 if self.rps > 0 {
                     let wait = std::time::Duration::from_secs(1) / self.rps as u32;
                     let mut lock = self.last_req.lock().unwrap();
@@ -281,53 +314,56 @@ macro_rules! jsonrpc_client {
                     *lock = std::time::Instant::now();
                     drop(lock);
                 }
-                if self.max_concurrency > 0 {
+
+                // Concurrency limiting: wait for slot if at max
+                let _guard = if self.max_concurrency > 0 {
                     let mut lock = self.counter.0.lock().unwrap();
-                    while *lock == self.max_concurrency {
+                    while *lock >= self.max_concurrency {
                         lock = self.counter.1.wait(lock).unwrap();
                     }
-                    *lock = *lock + 1;
-                    drop(lock);
-                }
-                let res = builder.send();
-                if self.max_concurrency > 0 {
-                    let mut lock = self.counter.0.lock().unwrap();
-                    *lock = *lock - 1;
-                    drop(lock);
-                    self.counter.1.notify_one();
-                }
-                let res = res?;
-                Ok(res)
+                    *lock += 1;
+                    Some(ConcurrencyGuard { counter: &self.counter })
+                } else {
+                    None
+                };
+
+                builder.send().map_err(RpcError::HttpError)
+                // Guard dropped here, releasing concurrency slot
             }
 
             $(
                 $(
                     $(#[$attr_a])*
-                    pub fn $method_a(&self$(, $arg_name_a: $arg_ty_a)*) -> Result<$return_ty_a, Error> {
+                    pub fn $method_a(&self$(, $arg_name_a: $arg_ty_a)*) -> Result<$return_ty_a, RpcError> {
                         let txt = self.call_method(stringify!($method_a), ($($arg_name_a,)*))?;
                         let body: RpcResponse<$return_ty_a> = serde_json::from_str(&txt)
-                            .map_err(|e| failure::format_err!("{}:\n{}", e, &txt))?;
+                            .map_err(|e| RpcError::JsonError { source: e, body: txt.clone() })?;
                         match body.error {
-                            Some(e) => failure::bail!("{:?}", e),
-                            None => body.result.ok_or(failure::format_err!("null response")),
+                            Some(e) => Err(RpcError::RpcError { error: e }),
+                            None => body.result.ok_or(RpcError::NullResponse),
                         }
                     }
                 )*
                 $(
                     $(#[$attr_b])*
-                    pub fn $method_b(&self$(, $arg_name_b: $arg_ty_b)*) -> Result<reply::$method_b, Error> {
+                    pub fn $method_b(&self$(, $arg_name_b: $arg_ty_b)*) -> Result<reply::$method_b, RpcError> {
                         let txt = self.call_method(stringify!($method_b), ($($arg_name_b,)*))?;
                         let body: reply::$method_b = (|txt: String| {
                             $(
                                 match serde_json::from_str::<RpcResponse<$return_ty_b>>(&txt) {
                                     Ok(a) => match a.error {
-                                        Some(e) => failure::bail!("{:?}", e),
-                                        None => return Ok(reply::$method_b::$title(a.result.ok_or(failure::format_err!("null response"))?)),
+                                        Some(e) => return Err(RpcError::RpcError { error: e }),
+                                        None => return Ok(reply::$method_b::$title(
+                                            a.result.ok_or(RpcError::NullResponse)?
+                                        )),
                                     },
                                     Err(_) => (),
                                 };
                             )+
-                            Err(failure::format_err!("Cannot deserialize to any variant of reply::{}:\n{}", stringify!($method_b), &txt))
+                            Err(RpcError::CannotDeserialize {
+                                enum_name: stringify!($method_b),
+                                body: txt.clone(),
+                            })
                         })(txt)?;
                         Ok(body)
                     }
